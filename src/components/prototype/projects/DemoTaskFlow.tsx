@@ -1,0 +1,41 @@
+import { useEffect, useState } from 'react'
+import { Check, ChevronRight, FileText, LoaderCircle, Pause, Play, RefreshCw, Sparkles } from 'lucide-react'
+import { demoRequest, makeAsset, now, uid, type Asset, type DocumentKind, type Project, type Task, type WorkDocument } from './model'
+import { Badge, Button, card, Modal, textarea } from './ui'
+
+type Run = NonNullable<Task['demoRun']>
+const scenes = {
+  brief: { title: '客户需求拆解', expert: '客户需求专家', steps: ['整理需求与引用资料', '识别约束与待确认问题', '形成需求工作稿'], kind: 'Brief 拆解' as DocumentKind, direction: '先明确设计方向；成本、数量和交期暂列待确认，不做假设。', sections: [['需求摘要', '示例方向：都市通勤与轻户外，兼顾轻量、易搭配与日常穿着。'], ['设计约束', '优先参考内部样衣，面料需满足穿着舒适度与供应条件。'], ['待确认问题', '目标成本、样衣数量、交期、检测要求待业务与客户进一步确认。'], ['后续开发建议', '从候选款式中选择参考，再比较两组面辅料方案。']] },
+  planning: { title: '趋势研究与系列企划', expert: '趋势企划专家团', steps: ['梳理研究范围与资料来源', '整理主题、色彩与款式方向', '形成可编辑的企划工作稿'], kind: '企划 PPT' as DocumentKind, direction: '围绕都市通勤与轻户外展开，先给简洁大纲，保留资料出处。', sections: [['系列主题', '示例主题：城市与自然之间。以轻量通勤单品构建日常可穿着的系列。'], ['客群与场景', '通勤、周末短途及城市步行；实际客群以项目 Brief 为准。'], ['色彩与面料', '示例色彩：米白、砂岩色、灰绿。候选材料：棉锦与轻量尼龙，采购条件待核实。'], ['款式结构', '短款外套、轻量风衣与叠搭单品；结合选定参考图进行细节设计。'], ['开发建议', '先选定核心款与面料，再整理样衣开发所需说明。']] },
+  search: { title: '搜款搜料', expert: '服装设计专家 · 面辅料专家', steps: ['明确检索范围与条件', '组织内部与外部候选', '整理候选筛选建议'], kind: '趋势报告' as DocumentKind, direction: '先找内部可复用款式，不足时补充外部参考；先保留候选，不自动入库。', sections: [['检索条件', '示例：轻量风衣、通勤与轻户外方向；优先参考内部样衣。'], ['筛选建议', '比较廓形、口袋、门襟及袖口细节；视觉相似不代表可直接生产。'], ['下一步', '进入结果工作区选择参考图，加入设计画布，或择优归档到项目。']] },
+}
+export function DemoTaskFlow({ task, project, onPatch, onOutput, onOpenAsset, onDocument, onSearch }: { task: Task; project: Project; onPatch: (patch: Partial<Task>) => boolean; onOutput: (t: Task, a: Asset) => void; onOpenAsset: (id: string) => void; onDocument: (kind: DocumentKind) => void; onSearch: () => void }) {
+  const run = task.demoRun, scene = scenes[run?.scenario ?? 'brief']
+  const [direction, setDirection] = useState(run?.direction ?? ''), [preview, setPreview] = useState(false)
+  useEffect(() => {
+    if (run?.status !== 'running') return
+    const timer = setTimeout(() => onPatch({ demoRun: { ...run, step: Math.min(3, run.step + 1), status: run.step >= 2 ? 'ready' : 'running' }, updated: now(), status: run.step >= 2 ? '待人工处理' : '进行中' }), 850)
+    return () => clearTimeout(timer)
+  }, [run, onPatch])
+  if (!run) return <div className="rounded-2xl border border-pri-line bg-pri-soft/30 p-5"><div className="flex items-center gap-2 mb-2"><Sparkles size={17} className="text-pri" /><h3 className="font-medium">让这次任务动起来</h3><Badge>演示模式</Badge></div><p className="text-[12px] text-ink-3 leading-6 mb-4">体验「确认方向 → 专家协作 → 查看成果 → 归档」；也可直接使用下方工作区。</p><div className="flex flex-wrap gap-2">{(['brief', 'planning', 'search'] as const).map(s => <Button key={s} onClick={() => onPatch({ demoRun: { ...demoRequest(task.messages.find(m => m.role === 'user')?.text ?? task.name), scenario: s }, updated: now() })}>{scenes[s].title}<ChevronRight size={13} /></Button>)}</div></div>
+  const update = (patch: Partial<Run>) => onPatch({ demoRun: { ...run, ...patch }, updated: now() })
+  function archive(edit = false) {
+    if (!run) return
+    if (run.outputId) { if (edit) onDocument(scene.kind); else onOpenAsset(run.outputId); return }
+    const doc: WorkDocument = { id: uid(), kind: scene.kind, title: project.name + ' · ' + scene.title + '（演示稿）', updated: now(), refs: structuredClone(task.refs), sections: scene.sections.map(([title, body]) => ({ id: uid(), title, body })) }
+    const text = '# ' + doc.title + '\n\n> 预置演示内容，非真实 AI 分析。请人工核查、修改后使用。\n\n本次要求：' + run.request + '\n\n确认方向：' + run.direction + '\n\n' + doc.sections.map(s => '## ' + s.title + '\n\n' + s.body).join('\n\n')
+    const a = makeAsset(doc.title, '项目文档', { id: uid(), name: doc.title + '.md', date: now(), mime: 'text/markdown', text }, '任务产出'); a.taskId = task.id
+    // Keep previously edited workdocs intact; a fresh demo still has its own artifact.
+    onOutput({ ...task, demoRun: { ...run, outputId: a.id }, status: '待人工处理', updated: now(), documents: task.documents?.some(d => d.kind === doc.kind) ? task.documents : [...(task.documents ?? []), doc] }, a)
+    if (edit) onDocument(scene.kind)
+  }
+  return <section className={`${card} overflow-hidden`} data-testid="demo-task-flow"><div className="p-5 border-b border-line-soft"><div className="flex flex-wrap gap-2 items-center"><span className="w-8 h-8 rounded-full bg-pri-soft text-pri flex items-center justify-center"><Sparkles size={16} /></span><h3 className="font-semibold flex-1">{scene.title}</h3><Badge>演示模式</Badge><Badge tone={run.status === 'ready' ? 'green' : run.status === 'error' ? 'orange' : 'blue'}>{{ confirm: '等你确认方向', running: '正在协作', paused: '已暂停', ready: '成果待查看', error: '演示异常' }[run.status]}</Badge></div><p className="text-[12px] text-ink-3 leading-6 mt-3">协作角色：{scene.expert}</p><p className="text-[11px] text-ink-3 mt-1">引用 {task.refs.length} 份资料 · 当前使用预置内容演示，不执行真实分析</p></div>
+    <div className="p-5 space-y-5"><div className="space-y-3">{scene.steps.map((s, i) => <div key={s} className="flex gap-3 items-center"><span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] shrink-0 ${run.step > i ? 'bg-pri-soft text-pri' : 'bg-fill text-ink-3'}`}>{run.step > i ? <Check size={13} /> : run.status === 'running' && run.step === i ? <LoaderCircle size={13} className="animate-spin" /> : i + 1}</span><p className={`text-[12px] ${run.step === i && run.status === 'running' ? 'text-pri font-medium' : 'text-ink-2'}`}>{s}</p></div>)}</div>
+      {run.status === 'confirm' && <div className="rounded-xl bg-fill-2 p-4 space-y-3"><p className="font-medium text-[13px]">开始前，确认一下这次怎么做</p><p className="text-[12px] text-ink-3 leading-6">{scene.direction}</p><textarea aria-label="补充本次执行方向" className={textarea} rows={2} placeholder="可以补充重点，也可以直接按建议继续…" value={direction} onChange={e => setDirection(e.target.value)} /><Button primary onClick={() => update({ status: 'running', step: 0, direction: direction.trim() || scene.direction })}>确认方向，开始演示</Button></div>}
+      {run.status === 'running' && <div className="flex items-center gap-3"><span className="text-[12px] text-ink-3 flex-1">正在演示专家协作过程…</span><Button onClick={() => update({ status: 'paused' })}><Pause size={13} />暂停</Button><button className="text-[11px] text-mut hover:text-ink" onClick={() => update({ status: 'error' })}>模拟异常</button></div>}
+      {run.status === 'paused' && <Button onClick={() => update({ status: 'running' })}><Play size={13} />继续演示</Button>}
+      {run.status === 'error' && <div className="bg-warn-soft rounded-xl p-4"><p className="text-[12px] text-warn mb-3">演示：资料读取暂时中断，已有内容保留，可以重试。</p><Button onClick={() => update({ status: 'running' })}><RefreshCw size={13} />重试当前步骤</Button></div>}
+      {run.status === 'ready' && <div className="rounded-2xl border border-pri-line p-4 space-y-4"><div className="flex gap-3"><div className="rounded-xl w-11 h-12 bg-pri-soft text-pri flex items-center justify-center shrink-0"><FileText size={22} /></div><div className="min-w-0"><h4 className="font-medium">{project.name} · {scene.title}</h4><p className="text-[12px] text-ink-3 leading-6 mt-1">{scene.sections.length} 个内容模块 · 示例草稿 · 可继续修改</p></div></div><div className="flex flex-wrap gap-2"><Button onClick={() => setPreview(true)}>预览成果</Button>{run.scenario === 'search' ? <Button primary onClick={onSearch}>进入候选工作区</Button> : <Button onClick={() => archive(true)}>归档并继续编辑</Button>}<Button primary={!run.outputId} onClick={() => archive()}>{run.outputId ? '查看已归档成果' : '归档到项目资产'}</Button></div><p className="text-[11px] text-ink-3">成果不会自动选入交付，也不会触发 PLM。</p><button className="text-[12px] text-pri" onClick={() => { setDirection(run.direction); update({ status: 'confirm', step: 0, outputId: undefined }) }}>调整要求，再演示一次</button></div>}
+    </div>{preview && <Modal wide title={scene.title + ' · 演示成果'} description="预置内容用于讲解产品，不是针对上传资料产生的真实结论。" onClose={() => setPreview(false)}><div className="space-y-5">{scene.sections.map(([t, b]) => <section key={t} className="border-b border-line-soft pb-4"><h3 className="font-semibold text-[15px] mb-2">{t}</h3><p className="text-[13px] text-ink-2 leading-7">{b}</p></section>)}</div></Modal>}
+  </section>
+}

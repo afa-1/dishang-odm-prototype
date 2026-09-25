@@ -1,0 +1,43 @@
+const assert = require('node:assert/strict')
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/mac/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright')
+const base = process.env.PROJECT_TEST_URL || 'http://127.0.0.1:4173'
+let checks = 0
+const check = (condition, name) => { assert.ok(condition, name); checks++; console.log('PASS', name) }
+;(async () => {
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' })
+  try {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    await page.goto(`${base}/?view=projects`)
+    await page.getByRole('heading', { name: '项目', exact: true }).waitFor()
+    await page.evaluate(() => localStorage.setItem('hyy-odm-projects-v1', '{broken'))
+    await page.reload()
+    await page.getByRole('alert').waitFor()
+    check((await page.getByRole('alert').innerText()).includes('暂停保存'), 'corrupt metadata gives recoverable error')
+    check(await page.evaluate(() => localStorage.getItem('hyy-odm-projects-v1') === '{broken'), 'corrupt metadata is not overwritten')
+    await context.close()
+
+    const next = await browser.newContext()
+    const p = await next.newPage()
+    await p.goto(`${base}/?view=projects&project=demo-summer-trench&tab=资产`)
+    await p.getByRole('heading', { name: /项目资产/ }).waitFor()
+    await p.getByRole('button', { name: '上传资产', exact: true }).click()
+    let dialog = p.getByRole('dialog')
+    await dialog.getByLabel('选择上传文件', { exact: true }).setInputFiles({ name: 'oversize.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(30 * 1024 * 1024 + 1) })
+    await dialog.getByRole('button', { name: '上传 1 个文件', exact: true }).click()
+    await dialog.getByRole('alert').waitFor()
+    check((await dialog.getByRole('alert').innerText()).includes('30 MB'), 'oversized files rejected with actionable message')
+    check(await p.evaluate(() => JSON.parse(localStorage.getItem('hyy-odm-projects-v1'))[0].assets.length === 5), 'failed upload creates no phantom asset')
+    await p.keyboard.press('Escape')
+    const before = await p.evaluate(() => localStorage.getItem('hyy-odm-projects-v1'))
+    await p.evaluate(() => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === 'hyy-odm-projects-v1') throw new DOMException('Full', 'QuotaExceededError'); return original.call(this, k, v) } })
+    await p.getByRole('button', { name: '编辑信息', exact: true }).click()
+    dialog = p.getByRole('dialog')
+    await dialog.getByLabel('项目名称 *', { exact: true }).fill('不能误报保存成功')
+    await dialog.getByRole('button', { name: '保存修改', exact: true }).click()
+    check(await dialog.isVisible(), 'failed save keeps form open')
+    check(await p.evaluate(() => localStorage.getItem('hyy-odm-projects-v1')) === before, 'quota error leaves previous metadata intact')
+    check((await dialog.getByRole('alert').innerText()).includes('保存失败'), 'quota error remains visible inside modal, not reported as success')
+    console.log(`COMPLETE: ${checks} edge checks`)
+  } finally { await browser.close() }
+})().catch(e => { console.error(e); process.exitCode = 1 })

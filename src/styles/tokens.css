@@ -1,0 +1,182 @@
+/* =====================================================================
+   画衣衣 Design Tokens —— 「白纸上的一抹钴蓝」（品牌蓝 #2A68FE）
+   依据《画衣衣 UI 视觉执行标准》：单一强调色（钴蓝），大面积留白分层，
+   柔光阴影，大圆角胶囊。组件一律使用语义化 Tailwind 类
+   （bg-pri / text-ink / border-line…），深浅模式仅切换变量值，业务零侵入。
+   ===================================================================== */
+
+:root {
+    /* —— 品牌钴蓝（唯一强调色：当前态 / 主操作 / 选中态） —— */
+    --c-pri: 42 104 254;        /* #2A68FE brand/solid */
+    --c-pri-hover: 36 88 216;   /* #2458D8 brand/hover */
+    --c-pri-soft: 238 243 255;  /* #EEF3FF brand/tint 浅蓝底 */
+    --c-pri-line: 213 225 255;  /* #D5E1FF 浅蓝边 */
+
+    /* —— AI 能力色：并入品牌蓝（单色聚焦纪律，不再使用紫色） —— */
+    --c-acc: 42 104 254;        /* #2A68FE */
+    --c-acc-hover: 36 88 216;   /* #2458D8 */
+    --c-acc-soft: 238 243 255;  /* #EEF3FF */
+    --c-acc-line: 213 225 255;  /* #D5E1FF */
+
+    /* —— 文本（四级中性灰，最黑 #181818，不用纯黑） —— */
+    --c-ink: 24 24 24;          /* #181818 text/primary 标题正文 */
+    --c-ink-2: 74 74 74;        /* #4A4A4A 次文本 */
+    --c-ink-3: 120 120 120;     /* #787878 text/secondary 辅助说明 */
+    --c-mut: 138 138 138;       /* #8A8A8A text/tertiary 描述/占位 */
+    --c-mut-2: 160 160 160;     /* #A0A0A0 更弱 */
+    --c-mut-3: 184 184 184;     /* #B8B8B8 禁用/最弱 */
+
+    /* —— 边框（极克制使用） —— */
+    --c-line: 232 232 232;      /* #E8E8E8 line/hairline */
+    --c-line-soft: 240 240 240; /* #F0F0F0 分割线 */
+    --c-line-strong: 216 216 216;/* #D8D8D8 强描边 */
+    --c-line-doc: 102 102 106;    /* #66666A 文档表格线：整单外框/信息栏/分隔带边线 */
+
+    /* —— 背景四层递进浅灰 —— */
+    --c-fill: 241 241 241;      /* #F1F1F1 bg/card：Tab、模板卡片、内嵌件 */
+    --c-fill-2: 246 246 246;    /* #F6F6F6 更浅填充（图片底、卡内区） */
+    --c-panel: 255 255 255;     /* #FFFFFF bg/elevated：浮层、输入框、弹窗 */
+    --c-cvs: 249 249 249;       /* #F9F9F9 bg/canvas：首页主区域 / 画布底 */
+
+    /* —— 状态色（鲜明识别：取自 Figma 品牌标识 绿/橙/红，v3.0 标准） —— */
+    --c-ok: 33 199 109;         /* #21C76D 成功 */
+    --c-ok-soft: 233 249 240;   /* #E9F9F0 */
+    --c-ok-line: 206 243 223;   /* #CEF3DF */
+    --c-warn: 245 106 48;       /* #F56A30 警告/评分 */
+    --c-warn-soft: 254 240 234; /* #FEF0EA */
+    --c-warn-line: 253 222 209; /* #FDDED1 */
+    --c-err: 246 48 48;         /* #F63030 错误 */
+    --c-err-soft: 254 234 234;  /* #FEEAEA */
+    --c-err-line: 253 209 209;  /* #FDD1D1 */
+
+    /* —— 圆角基准（radius/full 999 · lg 24 · md 16 · sm 12 · xs 10） —— */
+    --radius: 12px;
+
+    /* —— 动效：统一曲线与时长 —— */
+    --ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --dur-fast: 120ms;
+    --dur-base: 200ms;
+    --dur-slow: 240ms;
+
+    /* —— 字体：系统无衬线栈 —— */
+    --font-ui: -apple-system, "PingFang SC", "HarmonyOS Sans SC",
+      "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  }
+
+  [data-theme="dark"] {
+    --c-pri: 96 144 255;        /* #6090FF 暗色提亮 */
+    --c-pri-hover: 122 165 255; /* #7AA5FF */
+    --c-pri-soft: 35 48 78;     /* #23304E */
+    --c-pri-line: 52 70 108;    /* #34466C */
+
+    --c-acc: 96 144 255;
+    --c-acc-hover: 122 165 255;
+    --c-acc-soft: 35 48 78;
+    --c-acc-line: 52 70 108;
+
+    --c-ink: 236 236 239;       /* #ECECEF */
+    --c-ink-2: 201 202 208;     /* #C9CAD0 */
+    --c-ink-3: 166 168 176;     /* #A6A8B0 */
+    --c-mut: 139 141 150;       /* #8B8D96 */
+    --c-mut-2: 110 112 122;     /* #6E707A */
+    --c-mut-3: 85 87 95;        /* #55575F */
+
+    --c-line: 58 58 64;         /* #3A3A40 */
+    --c-line-soft: 48 48 54;    /* #303036 */
+    --c-line-strong: 74 74 82;  /* #4A4A52 */
+    --c-line-doc: 138 138 146;    /* #8A8A92 文档表格线（深色模式） */
+
+    --c-fill: 44 44 50;         /* #2C2C32 */
+    --c-fill-2: 34 34 39;       /* #222227 */
+    --c-panel: 38 38 44;        /* #26262C */
+    --c-cvs: 28 28 32;          /* #1C1C20 */
+
+    --c-ok: 73 209 135;         /* #49D187 暗色提亮 */
+    --c-ok-soft: 29 52 43;      /* #1D342B */
+    --c-ok-line: 30 83 57;      /* #1E5339 */
+    --c-warn: 247 133 85;       /* #F78555 */
+    --c-warn-soft: 58 39 34;    /* #3A2722 */
+    --c-warn-line: 97 53 37;    /* #613525 */
+    --c-err: 248 85 85;         /* #F85555 */
+    --c-err-soft: 59 31 34;     /* #3B1F22 */
+    --c-err-line: 98 34 37;     /* #622225 */
+  }
+
+  /* 浅蓝底上的蓝色文字/图标：用 brand/deep #2151C6（浅底对比度 6.18:1） */
+  .bg-acc-soft.text-acc,
+  .bg-pri-soft.text-pri {
+    color: rgb(33 81 198);
+  }
+  [data-theme="dark"] .bg-acc-soft.text-acc,
+  [data-theme="dark"] .bg-pri-soft.text-pri {
+    color: rgb(157 185 255);
+  }
+
+  /* 状态浅底上的状态文字：压深保证对比度（#147B44/#98421E/#991E1E，浅底 ≥ 4.5:1） */
+  .bg-ok-soft.text-ok { color: rgb(20 123 68); }
+  .bg-warn-soft.text-warn { color: rgb(152 66 30); }
+  .bg-err-soft.text-err { color: rgb(153 30 30); }
+  /* 暗色主题：状态文字使用提亮后的主色，无需压深 */
+  [data-theme="dark"] .bg-ok-soft.text-ok { color: rgb(var(--c-ok)); }
+  [data-theme="dark"] .bg-warn-soft.text-warn { color: rgb(var(--c-warn)); }
+  [data-theme="dark"] .bg-err-soft.text-err { color: rgb(var(--c-err)); }
+
+  /* 全局去除投影：浮层/卡片仅靠描边与底色分层（产品视觉指令） */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+  }
+
+  body {
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* —— 全局滑动条统一标准（与无限画布 Agent 面板右侧移动轴一致） ——
+     6px 浅灰圆角轴（bg-line），悬浮高亮 bg-mut/45，按压 bg-mut/60，无轨道底色；
+     类选择器（[scrollbar-width:none] / [&::-webkit-scrollbar]:hidden）优先级高于 *，自定义移动轴区域不受影响 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-line)) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-line));
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--c-mut) / 0.45);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background: rgb(var(--c-mut) / 0.6);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* 导出 PDF 快照：隐藏纸面上的交互控件（按钮 / 拖拽手柄），保持版面干净 */
+  .pdf-shot button,
+  .pdf-shot .bleed-guide,
+  .pdf-shot .cursor-nwse-resize {
+    display: none !important;
+  }
+
+/* 移至侧边栏等仅屏幕呈现的辅助元素：导出 PDF 时隐藏 */
+.pdf-shot .pdf-hide { display: none !important; }
+
+/* 价格核算模块移动动效：飞入飞出（幽灵卡片按源→目标位置飞行，由大到小 / 由小到大） */
+@keyframes cost-fly {
+  to { left: var(--fx); top: var(--fy); width: var(--fw); height: var(--fh); }
+}
+.cost-flight { animation: cost-fly 0.36s cubic-bezier(0.3, 0.7, 0.3, 1) forwards; }
+@keyframes cost-module-in { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+.cost-module-anim { animation: cost-module-in 0.3s cubic-bezier(0.22, 0.8, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .cost-flight { display: none; } .cost-module-anim { animation: none; } }
