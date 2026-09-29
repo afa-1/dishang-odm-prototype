@@ -14,14 +14,21 @@ export interface SearchSet { id: string; date: string; kind: '款式' | '面辅�
 export type DocumentKind = 'Brief 拆解' | '趋势报告' | '企划 PPT'
 export interface WorkDocument { invocationId?: string; id: string; kind: DocumentKind; title: string; sections: { id: string; title: string; body: string }[]; refs: Task['refs']; updated: string; confirmedAt?: string }
 export interface Asset {
+  selectionNote?: string
+  selectionBy?: string
   resourceId?: string
   id: string; name: string; kind: AssetKind; source: '资料收集' | '任务产出' | '人工上传'; taskId?: string
   revisions: Revision[]; adopted: string; delivery: boolean; selection: Selection; material: string; cloud: string
   provenance?: Provenance; materials?: MaterialLink[]
 }
 export interface Task {
+  assignee?: string; reviewer?: string
+  reviewNote?: string
+  history?: { date: string; text: string }[]
+  caseStage?: string
+  caseRun?: { state: 'idle' | 'running' | 'paused' | 'ready'; step: number; instruction: string }
   demoRun?: { scenario: 'brief' | 'planning' | 'search'; status: 'confirm' | 'running' | 'paused' | 'ready' | 'error'; step: number; request: string; direction: string; outputId?: string }
-  id: string; name: string; type: string; status: '进行中' | '待人工处理' | '已完成'; updated: string
+  id: string; name: string; type: string; status: '待开始' | '进行中' | '待人工处理' | '待审核' | '退回修改' | '已完成'; updated: string
   refs: { assetId: string; revisionId: string; name: string }[]
   context: { goal: string; customers: string[]; brands: string[]; skills: string[]; experts: string[]; teams?: string[]; connectors: string[]; profiles?: ProfileReference[]; requirements?: WorkDocument }
   invocations?: { id: string; capability: Capability; instruction: string; date: string; refs: Task['refs']; status: '已配置' | '已演示'; outputId?: string }[]
@@ -33,11 +40,15 @@ export interface DeliveryItem { assetId: string; name: string; kind: AssetKind; 
 export interface PushRecord { id: string; customer: string; customerId?: string; date: string; items: DeliveryItem[]; feedback: string }
 export interface Handoff { id: string; date: string; confirmedBy: string; items: DeliveryItem[] }
 export interface Project {
+  caseId?: 'zara-28ss'
+  developmentMode?: '自主开发' | '客户开发'
+  members?: { name: string; role: string }[]
+  review?: { state: 'draft' | 'pending' | 'returned' | 'approved'; reviewer: string; note: string; date: string }
   id: string; name: string; goal: string; customers: string[]; brands: string[]; season: string; category: string; owner: string
   customerIds?: string[]; brandIds?: string[]
   templateId?: string; teams?: string[]
   requirements?: WorkDocument
-  status: '进行中' | '已归档'; demo?: boolean; created: string; updated: string
+  status: '待启动' | '进行中' | '待内部确认' | '修改中' | '已交接' | '已归档'; demo?: boolean; created: string; updated: string
   skills: string[]; experts: string[]; connectors: string[]; tasks: Task[]; assets: Asset[]
   activities: { id: string; text: string; date: string }[]; pushes: PushRecord[]; handoffs: Handoff[]
 }

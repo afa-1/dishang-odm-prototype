@@ -15,6 +15,7 @@ export interface Capability {
 
 // Product capability definitions, not credentials or executable AI integrations.
 export const ODM_SKILLS: Capability[] = [
+  { id: 'odm-trend-collect', kind: 'skill', name: '趋势资料整理', description: '整理上传或授权数据源的资料，保留出处、用途与项目关联。', input: '授权趋势报告、PPT、图片、流程和标注规范。', output: '来源清单、版本差异、项目引用与待复核项。', review: '没有原始数据时不声称已爬取或分析，不默认保存全部外部搜索结果。', taskType: '趋势分析', sources: ['趋势资料库'] },
   { id: 'odm-brief', kind: 'skill', name: '客户 Brief 拆解', description: '提炼已知需求、设计约束和待确认问题。', input: '客户 Brief、邮件或需求描述，可补充客户与品牌资料。', output: '需求摘要、约束清单、待确认事项。', review: '人工确认需求后，才作为其他任务的开发依据。', taskType: 'Brief 拆解', sources: [] },
   { id: 'odm-style-search', kind: 'skill', name: '内外部相似款检索', description: '优先复用内部样衣，按需拓展外部参考款。', input: '参考图或款式描述，说明品类、风格和检索范围。', output: '候选款式结果集、来源与匹配依据，择优加入画布或归档。', review: '外部参考不等于自有可生产款，不默认全量爬取或保存。', taskType: '搜款搜料', sources: ['内部样衣库', '外部搜款服务'] },
   { id: 'odm-material-search', kind: 'skill', name: '内外部面辅料检索', description: '按成分、克重、功能和供应条件寻找候选料。', input: '面料图片或规格，以及目标成本、采购量等已知条件。', output: '候选面辅料、供应商与来源、待核实的采购条件。', review: '实物手感、价格、库存及交期必须由业务核实。', taskType: '搜款搜料', sources: ['面辅料库', '外部面辅料服务'] },

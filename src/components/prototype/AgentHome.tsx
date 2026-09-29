@@ -41,6 +41,7 @@ import SkillsPage from './SkillsPage'
 import DirectoryPage, { BrandHub } from './projects/DirectoryPage'
 import WorkbenchPage from './WorkbenchPage'
 import ProjectsPage from './projects/ProjectsPage'
+import { DesignEntry } from './projects/DesignEntry'
 import ResourceLibrary from './projects/ResourceLibrary'
 import CapabilityHub from './projects/CapabilityHub'
 import { ConnectorLinkBar, ConnectorsModal } from './Connectors'
@@ -169,6 +170,7 @@ export default function AgentHome({
   const [localPage, setPage] = useState<'home' | 'skills' | 'inspo' | 'pattern' | 'brand' | 'bench'>('home')
   const activeNav = routePage ?? localNav
   const page = routePage ?? localPage
+  const [designEntryOpen, setDesignEntryOpen] = useState(false)
   const [plansOpen, setPlansOpen] = useState(false) // 升级套餐弹窗
   const { t } = useLang() // 全局语言
   // 已选技能（可多选，一起工作）：点击选择器/场景胶囊代入，输入框上方横向并列展示，发送时以「技能协作」前缀带入
@@ -413,7 +415,7 @@ export default function AgentHome({
                         }
                         if (item.id !== 'workbench' && routePage) setSearchParams({})
                         if (item.id === 'workbench') {
-                          onOpenCanvas() // 设计工作台 = 设计画布入口（右上角原入口已取消）
+                          setDesignEntryOpen(true)
                           return
                         }
                         if (item.id === 'pattern') {
@@ -504,6 +506,7 @@ export default function AgentHome({
         {plansOpen && <PlansModal onClose={() => setPlansOpen(false)} showToast={showToast} />}
       </aside>
 
+      {designEntryOpen && <DesignEntry onClose={() => setDesignEntryOpen(false)} onFreeCanvas={() => { setDesignEntryOpen(false); onOpenCanvas() }} onTask={(project, task) => { setDesignEntryOpen(false); setSearchParams({ view: 'projects', project, tab: '任务', task }) }} />}
       {/* ===== 主内容区 ===== */}
       <main className="flex-1 min-w-0 h-full overflow-y-auto [scrollbar-width:thin] relative">
 
