@@ -6,7 +6,8 @@ import { Button, Modal } from './ui'
 
 const dataURL = (b: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('图片无法读取')); r.readAsDataURL(b) })
 // Blob URLs expire on refresh. Inline only transient blobs in the IndexedDB draft file.
-async function durableDraft(draft: ProjectCanvasDocument): Promise<ProjectCanvasDocument> {
+// eslint-disable-next-line react-refresh/only-export-components
+export async function durableDraft(draft: ProjectCanvasDocument): Promise<ProjectCanvasDocument> {
   const urls = new Map<string, string>()
   async function walk(value: unknown): Promise<unknown> {
     if (typeof value === 'string' && value.startsWith('blob:')) { if (!urls.has(value)) { const r = await fetch(value); if (!r.ok) throw new Error('画布图片已失效'); urls.set(value, await dataURL(await r.blob())) }; return urls.get(value) }

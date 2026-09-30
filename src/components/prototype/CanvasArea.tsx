@@ -134,6 +134,7 @@ type CanvasSnap = { cards: Card[]; strokes: PenStroke[] }
 export interface ProjectCanvasDocument { cards: Card[]; strokes: PenStroke[]; marks: Mark[] }
 export interface ProjectCanvasBridge {
   initial: ProjectCanvasDocument
+  onChange?: (draft: ProjectCanvasDocument) => void
   toolbar?: HTMLElement | null
   onSave: (draft: ProjectCanvasDocument) => Promise<boolean>
   onArchive: (files: { id: string; name: string; blob: Blob }[]) => Promise<boolean>
@@ -912,6 +913,7 @@ export default function CanvasArea({
   // 「画笔」：编辑态开关 + 笔划数据（世界坐标）+ 历史栈
   const [penOn, setPenOn] = useState(false)
   const [strokes, setStrokes] = useState<PenStroke[]>(() => projectBridge?.initial.strokes ?? [])
+  useEffect(() => { projectBridge?.onChange?.({ cards, strokes, marks }) }, [cards, strokes, marks]) // eslint-disable-line react-hooks/exhaustive-deps
   const [pastStrokes, setPastStrokes] = useState<PenStroke[][]>([]) // 撤销栈：每次修改前的完整快照
   const [futureStrokes, setFutureStrokes] = useState<PenStroke[][]>([]) // 重做栈
   const [penColor, setPenColor] = useState(PEN_COLORS[0])

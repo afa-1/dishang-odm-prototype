@@ -4,7 +4,8 @@ import { hydrateProject } from './directory'
 import { ArrowUpRight, Building2, ChevronRight, FileText, FolderKanban, MessageSquare, PanelRightClose, PanelRightOpen, Pencil, Plus, Plug, Settings2, Sparkles, Users } from 'lucide-react'
 import { AssetsView, AssetDetail, UploadForm } from './Assets'
 import { ConfigForm, ProjectForm } from './ProjectForms'
-import { TasksView, TaskForm } from './Tasks'
+import { TasksView } from './Tasks'
+import { newAgentTask } from './projectAgentModel'
 import { DeliveryView } from './Delivery'
 import { snapshot, dateLabel, loadProjects, log, saveProjects, TABS, type Asset, type Project, type Tab, type Task } from './model'
 import { Badge, Button, card, Empty, SearchBox } from './ui'
@@ -26,7 +27,7 @@ export default function ProjectsPage() {
   const tab: Tab = TABS.includes(params.get('tab') as Tab) ? params.get('tab') as Tab : '概览'
   const [query, setQuery] = useState(''), [scope, setScope] = useState('全部项目')
   const [form, setForm] = useState<'create' | 'edit' | 'config' | 'task' | 'upload' | null>(() => new URLSearchParams(location.search).get('new') === '1' ? 'create' : null)
-  const [reference, setReference] = useState<Asset | undefined>(), [assetId, setAssetId] = useState<string | null>(null), [uploadTask, setUploadTask] = useState<string | undefined>()
+  const [assetId, setAssetId] = useState<string | null>(null), [uploadTask, setUploadTask] = useState<string | undefined>()
   const [configOpen, setConfigOpen] = useState(false)
   const [template, setTemplate] = useState<ProjectTemplate | undefined>()
   const asset = project?.assets.find(a => a.id === assetId)
@@ -56,10 +57,10 @@ export default function ProjectsPage() {
     setParams({ view: 'projects', ...(id ? { project: id, tab: nextTab } : {}), ...(task ? { task } : {}) })
     setAssetId(null)
   }
-  function newTask(a?: Asset) { setReference(a); setForm('task'); setAssetId(null) }
+  function newTask(a?: Asset) { if (!project) return; const t = newAgentTask(project, a); if (update(p => ({ ...p, tasks: [t, ...p.tasks] }), '新建项目对话')) { setAssetId(null); navigate(project.id, '任务', t.id) } }
   function upload(taskId?: string) { setUploadTask(taskId); setForm('upload') }
   function changeAsset(id: string, patch: Partial<Asset>, activity: string) { return update(p => ({ ...p, assets: p.assets.map(a => a.id === id ? { ...a, ...patch } : a) }), activity) }
-  function saveTask(t: Task) { return update(p => ({ ...p, ...(t.caseStage === 'brief' && t.status === '已完成' && t.documents?.[0] ? { requirements: { ...structuredClone(t.documents[0]), confirmedAt: new Date().toISOString() } } : {}), tasks: p.tasks.map(x => x.id === t.id ? t : x) }), `更新任务：${t.name}`) }
+  function saveTask(t: Task) { const brief = t.documents?.filter(d => d.kind === 'Brief 拆解').at(-1); return update(p => ({ ...p, status: p.status === '待启动' && t.status === '进行中' ? '进行中' : p.status, ...(t.status === '已完成' && brief ? { requirements: { ...structuredClone(brief), confirmedAt: new Date().toISOString() } } : {}), tasks: p.tasks.map(x => x.id === t.id ? t : x) }), `更新任务：${t.name}`) }
   function saveTaskAssets(taskId: string, assets: Asset[], mode: 'collect' | 'design' | 'document') {
     return update(p => {
       const next = [...p.assets]
@@ -102,7 +103,7 @@ export default function ProjectsPage() {
       <div className="px-6 lg:px-8 pt-6 bg-panel border-b border-line-soft"><div className="flex justify-between items-start gap-4 mb-5"><div className="min-w-0"><div className="flex flex-wrap gap-3 items-center"><h1 className="text-[22px] font-semibold break-words">{project.name}</h1>{project.demo && <Badge>示例项目</Badge>}<Badge tone={project.status === '进行中' ? 'blue' : 'muted'}>{project.status}</Badge></div><p className="text-ink-3 text-[12px] mt-2">{project.season || '季节待定'} · {project.category || '品类待定'} · 负责人：{project.owner}</p></div><div className="flex gap-2 shrink-0">{project.caseId && <Button onClick={() => openCase(false, true)}>新开一轮演示</Button>}<Button onClick={() => setForm('edit')}><Pencil size={14} />编辑信息</Button></div></div><div role="tablist" aria-label="项目内容" className="inline-flex bg-fill rounded-full p-1 mb-5">{TABS.map(t => <button id={`project-tab-${t}`} role="tab" aria-selected={tab === t} aria-controls="project-tab-panel" key={t} onClick={() => navigate(project.id, t)} className={`px-5 py-2 rounded-full text-[13px] ${tab === t ? 'bg-panel text-ink font-semibold' : 'text-ink-3 hover:text-ink'}`}>{t}</button>)}</div></div>
       <div className="flex items-start relative"><div role="tabpanel" id="project-tab-panel" aria-labelledby={`project-tab-${tab}`} className="flex-1 min-w-0 p-6 lg:p-8">
         {tab === '概览' && <ProjectOverview project={project} onTab={t => navigate(project.id, t)} onTask={id => navigate(project.id, '任务', id)} onNewTask={() => newTask()} onEdit={() => setForm('edit')} onUpdate={update} />}
-        {tab === '任务' && <TasksView onCaseUpdate={update} onNavigate={(tab, task) => navigate(project.id, tab, task)} key={activeId ?? 'list'} onRequirements={doc => update(p => ({ ...p, requirements: structuredClone(doc) }), '人工确认项目需求，后续新任务引用')} project={project} activeId={activeId} onActive={id => navigate(project.id, '任务', id)} onCreate={() => newTask()} onUpdate={saveTask} onPatch={(id, patch) => update(p => ({ ...p, tasks: p.tasks.map(t => t.id === id ? { ...t, ...patch } : t) }), '更新任务工作资料')} onAssets={saveTaskAssets} onOpenAsset={setAssetId} onUpload={upload} onOutput={(t, a) => { update(p => ({ ...p, tasks: p.tasks.map(x => x.id === t.id ? t : x), assets: [a, ...p.assets] }), `任务产出已归档：${a.name}`) }} />}
+        {tab === '任务' && <TasksView onNavigate={(tab, task) => navigate(project.id, tab, task)} key={activeId ?? 'list'} project={project} activeId={activeId} onActive={id => navigate(project.id, '任务', id)} onCreate={() => newTask()} onUpdate={saveTask} onAssets={saveTaskAssets} onOpenAsset={setAssetId} onUpload={upload} />}
         {tab === '资产' && <AssetsView onUpdate={update} onImport={assets => update(p => ({ ...p, assets: [...assets.filter(a => !p.assets.some(x => x.resourceId === a.resourceId)), ...p.assets] }), '从公共资料引用到项目')} project={project} onOpen={setAssetId} onUpload={() => upload()} onReference={newTask} onChange={changeAsset} />}
         {tab === '交付' && <DeliveryView onUpdate={update} project={project} onOpen={setAssetId} onAssets={() => navigate(project.id, '资产')} onChange={changeAsset} onHandoff={h => { if (update(p => ({ ...p, status: '已交接', handoffs: [h, ...p.handoffs] }), `完成内部确认：${h.items.length} 项内容，模拟交接`)) notify('内部确认快照已保存，未发送到真实 PLM') }} onPush={r => { if (update(p => ({ ...p, pushes: [r, ...p.pushes] }), `新建客户推款记录：${r.customer}`)) notify('推款记录已保存，未实际发送') }} onFeedback={(id, feedback) => { if (update(p => ({ ...p, pushes: p.pushes.map(r => r.id === id ? { ...r, feedback } : r) }), '更新客户反馈（不改变内部确认状态）')) notify('客户反馈已保存') }} />}
       </div>{configOpen && <aside className="w-[264px] shrink-0 border-l border-line-soft bg-panel p-5 min-h-[640px] max-lg:absolute max-lg:right-0 max-lg:top-0 max-lg:z-20 max-lg:border max-lg:rounded-2xl">
@@ -115,7 +116,7 @@ export default function ProjectsPage() {
     {form === 'create' && <ProjectForm template={template} presetCustomer={params.get('customer') ?? undefined} presetBrand={params.get('brand') ?? undefined} onClose={() => { setForm(null); setTemplate(undefined); if (params.get('new')) setParams({ view: 'projects' }) }} onSave={p => { if (commit([log(p, '创建项目'), ...projectsRef.current])) { setForm(null); setTemplate(undefined); navigate(p.id); notify('项目已创建') } }} />}
     {form === 'edit' && project && <ProjectForm initial={project} onClose={() => setForm(null)} onSave={p => { if (update(() => p, '更新项目信息')) { setForm(null); notify('项目信息已保存') } }} />}
     {form === 'config' && project && <ConfigForm project={project} onClose={() => setForm(null)} onSave={patch => { if (update(p => ({ ...p, ...patch }), '更新项目配置')) { setForm(null); notify('项目配置已保存') } }} />}
-    {form === 'task' && project && <TaskForm project={project} reference={reference} onClose={() => setForm(null)} onSave={t => { if (update(p => ({ ...p, tasks: [t, ...p.tasks] }), `创建任务：${t.name}`)) { setForm(null); navigate(project.id, '任务', t.id) } }} />}
+
     {form === 'upload' && project && <UploadForm onClose={() => setForm(null)} onSave={assets => { if (update(p => ({ ...p, assets: [...assets.map(a => ({ ...a, ...(uploadTask ? { taskId: uploadTask } : {}) })), ...p.assets] }), `上传 ${assets.length} 项资产`)) { setForm(null); notify('资产已保存到本机浏览器') } }} />}
     {asset && <AssetDetail key={asset.id} project={project} asset={asset} onClose={() => setAssetId(null)} onChange={changeAsset} onReference={newTask} toast={notify} />}
     {toast && <div role="status" className="fixed z-[70] bottom-6 left-1/2 -translate-x-1/2 max-w-[80vw] bg-ink text-panel text-[12px] px-5 py-3 rounded-full">{toast}</div>}

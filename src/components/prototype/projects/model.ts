@@ -3,6 +3,7 @@ import coat2 from '@/assets/brandlib/coat2.png'
 import coat3 from '@/assets/brandlib/coat3.png'
 import { hydrateProject, persistDirectory, type ProfileReference } from './directory'
 import type { Capability } from './capabilities'
+import type { AgentSession } from './projectAgentModel'
 
 export type Tab = '概览' | '任务' | '资产' | '交付'
 export type AssetKind = '项目文档' | '款式设计' | '面辅料' | '参考资料'
@@ -22,6 +23,7 @@ export interface Asset {
   provenance?: Provenance; materials?: MaterialLink[]
 }
 export interface Task {
+  agent?: AgentSession
   assignee?: string; reviewer?: string
   reviewNote?: string
   history?: { date: string; text: string }[]

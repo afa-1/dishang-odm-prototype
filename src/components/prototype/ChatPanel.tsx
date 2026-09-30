@@ -46,15 +46,37 @@ interface Delivery {
   points: string[]
 }
 
-type Item =
+export type ChatItem =
   | { kind: 'user'; text: string }
   | { kind: 'ai'; text: string }
   | { kind: 'plan'; intro: string; steps: string[]; outro: string }
-  | { kind: 'progress'; steps: { label: string; done: boolean }[]; done: boolean }
+  | { kind: 'progress'; steps: { label: string; done: boolean }[]; done: boolean; status?: 'running' | 'paused' | 'waiting' }
   | { kind: 'delivery'; d: Delivery }
   | { kind: 'suggest'; items: string[] }
   | { kind: 'feedback' }
+  | { kind: 'artifact'; id: string; title: string; detail: string }
   | { kind: 'ask'; context: string; question: string; options: string[]; multi?: boolean; preset?: number[]; answer?: string; skipped?: boolean } // 询问模式：推理中途的情景化提问卡片（multi 时选项可多选，preset 为推荐勾选项）
+
+type Item = ChatItem
+export interface ProjectAgentBridge {
+  projectName: string
+  taskName: string
+  items: ChatItem[]
+  busy: boolean
+  draft?: string
+  onDraftConsumed: () => void
+  onSend: (text: string, mode: 'auto' | 'ask') => void
+  onAnswer: (index: number, choices: number[], custom?: string) => void
+  onSkip: (index: number) => void
+  onStop: () => void
+  onNew: () => void
+  onHistory: () => void
+  onCapabilities: () => void
+  onReferences: () => void
+  onUpload: (files: File[]) => void
+  composerContext: ReactNode
+  renderArtifact: (item: Extract<ChatItem, { kind: 'artifact' }>) => ReactNode
+}
 
 /* ================= 交付物内容生成 ================= */
 
@@ -124,7 +146,7 @@ const CUSTOM_MODELS = [
 ]
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB 上传上限
-const ACCEPT_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'md']
+const ACCEPT_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'md', 'ppt', 'pptx', 'html']
 
 const taskTitle = (text: string) => {
   const t = text.replace(/[。！？!?.，,]/g, '').trim()
@@ -562,6 +584,7 @@ export default function ChatPanel({
   initialTeam,
   agentInbox,
   onAgentInboxConsumed,
+  projectAgent,
 }: {
   /** 返回 Agent 首页（原顶部导航栏的返回按钮，现融合到面板头部） */
   onBackHome?: () => void
@@ -589,6 +612,7 @@ export default function ChatPanel({
   /** 画布「发送至Agent」带过来的图片：自动追加为输入框附件 */
   agentInbox?: { ts: number; items: { name: string; url: string }[] } | null
   onAgentInboxConsumed?: () => void
+  projectAgent?: ProjectAgentBridge
 }) {
   // 文件名：点击激活「更改名称」（Enter/失焦确认，Esc 取消，空名回退）
   const [fileName, setFileName] = useState('未命名文件')
@@ -601,11 +625,19 @@ export default function ChatPanel({
     setRenaming(false)
   }
   const [input, setInput] = useState('')
-  const [items, setItems] = useState<Item[]>([])
+  const [localItems, setItems] = useState<Item[]>([])
+  const items = projectAgent?.items ?? localItems
   // 历史对话：新建时把当前对话归档到这里，可从「历史」恢复
   const [convos, setConvos] = useState<Array<{ id: number; title: string; time: string; items: Item[] }>>([])
   const [histOpen, setHistOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [localBusy, setBusy] = useState(false)
+  const busy = projectAgent?.busy ?? localBusy
+  useEffect(() => {
+    if (projectAgent?.draft !== undefined) {
+      setInput(projectAgent.draft)
+      projectAgent.onDraftConsumed()
+    }
+  }, [projectAgent?.draft]) // eslint-disable-line react-hooks/exhaustive-deps
   // 底部对话栏（PRD）：执行模式与模型档位持久化用户偏好
   const [mode, setMode] = useState<'auto' | 'ask'>(() => (localStorage.getItem('hyy-exec-mode') === 'ask' ? 'ask' : 'auto'))
   const [model, setModel] = useState(() => localStorage.getItem('hyy-model') || 'standard')
@@ -727,7 +759,7 @@ export default function ChatPanel({
       pendingAutoRef.current = null
       sendRef.current(t)
     }
-  }, [busy]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [busy])
 
   // 画布点选图片自动关联：选中的图片即刻同步为输入框附件（替换旧的画布关联附件，保留手动上传的附件；取消选择则移除）
   useEffect(() => {
@@ -762,7 +794,7 @@ export default function ChatPanel({
   // 互斥逻辑：标记需求带入输入区后，点选图片自动关联的附件即时消失（标记已引用图片区域，二者不共存）
   useEffect(() => {
     if (marks.length) setAttachments((arr) => arr.filter((a) => !a.agent))
-  }, [marks]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [marks])
 
   const later = (fn: () => void, ms: number) => {
     timersRef.current.push(window.setTimeout(fn, ms))
@@ -791,7 +823,6 @@ export default function ChatPanel({
     const ro = new ResizeObserver(syncSb)
     ro.observe(el)
     return () => ro.disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(syncSb) // 消息/交付等内容变化后同步移动轴
   const startSbDrag = (e: React.PointerEvent) => {
@@ -935,6 +966,12 @@ export default function ChatPanel({
   const runTask = (rawText: string, files: string[] = []) => {
     const text = rawText.trim()
     if ((!text && !files.length && !marks.length) || busy) return
+    if (projectAgent) {
+      const context = marks.map(m => `${m.part || '画布标记'}：${m.note || '按此位置修改'}`).join('；')
+      projectAgent.onSend([text, context, files.length ? `画布参考：${files.join('、')}` : ''].filter(Boolean).join('\n'), mode)
+      setInput(''); setAttachments([]); onClearMarks()
+      return
+    }
     // 标记需求：每个带入的标记 = 一个独立小需求（编号·部位：描述），多个表示多个需求同时执行
     const reqText = marks.map((m, i) => `${i + 1}·${m.part || '标记'}${m.note ? `：${m.note}` : ''}`).join('；')
     const fileSuffix = files.length ? `（附件：${files.join('、')}）` : ''
@@ -993,6 +1030,7 @@ export default function ChatPanel({
   // 建议卡片 / 延伸建议 / 首页任务：直接发起（开头不设确认环节；询问模式在推理中途提问）
   // 新建对话：当前对话非空则归档进历史，随后清空输入区与消息流
   const newConvo = () => {
+    if (projectAgent) { projectAgent.onNew(); return }
     if (items.length) {
       const firstUser = items.find((m) => m.kind === 'user')
       const title = firstUser && 'text' in firstUser ? firstUser.text.slice(0, 18) : '未命名对话'
@@ -1062,6 +1100,7 @@ export default function ChatPanel({
   const enhance = () => {
     const t = input.trim()
     if (!t || enhancing) return
+    if (projectAgent) { setInput(`${t}\n请结合当前项目背景和引用资料，说明依据，先给出可编辑的草稿，并保留待确认项。`); setEnhanced(true); return }
     setEnhancing(true)
     later(() => {
       setInput(
@@ -1075,6 +1114,7 @@ export default function ChatPanel({
   // 附件上传：前端校验类型与大小（≤50MB），违规阻止并提示（PRD 3.5 / 5）
   const pickFiles = (list: FileList | null) => {
     if (!list) return
+    if (projectAgent) { projectAgent.onUpload(Array.from(list)); return }
     const next = [...attachments]
     for (const f of Array.from(list)) {
       const ext = f.name.split('.').pop()?.toLowerCase() || ''
@@ -1122,14 +1162,16 @@ export default function ChatPanel({
           <button
             onClick={newConvo}
             title="新建对话"
+            aria-label="新建对话"
             className="w-7 h-7 rounded-md flex items-center justify-center text-mut hover:bg-fill hover:text-ink transition-colors"
           >
             <SquarePen className="w-4 h-4" />
           </button>
           <div className="relative">
             <button
-              onClick={() => setHistOpen(!histOpen)}
+              onClick={() => projectAgent ? projectAgent.onHistory() : setHistOpen(!histOpen)}
               title="历史对话"
+              aria-label="历史对话"
               className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${histOpen ? 'bg-fill text-ink' : 'text-mut hover:bg-fill hover:text-ink'}`}
             >
               <History className="w-4 h-4" />
@@ -1170,8 +1212,8 @@ export default function ChatPanel({
       <div className="absolute left-2 top-2 z-30 h-12 pl-2.5 pr-1.5 bg-panel rounded-full border border-line shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2">
         <div className="relative shrink-0" data-pop>
           <button
-            onClick={() => setOpenPop(openPop === 'file' ? null : 'file')}
-            title="项目菜单"
+            onClick={() => projectAgent ? onBackHome?.() : setOpenPop(openPop === 'file' ? null : 'file')}
+            title={projectAgent ? '返回项目任务' : '项目菜单'}
             className="block w-7 h-7 rounded-full hover:opacity-70 transition-opacity"
           >
             <img src={logoUrl} alt="画衣衣" className="w-full h-full object-contain" />
@@ -1183,7 +1225,7 @@ export default function ChatPanel({
           title="展开 AI 对话"
           className="max-w-36 truncate text-[13.5px] font-semibold text-ink hover:text-pri transition-colors"
         >
-          {fileName}
+          {projectAgent?.projectName ?? fileName}
         </button>
         <div className="w-px h-5 bg-line shrink-0" />
         <button
@@ -1216,8 +1258,8 @@ export default function ChatPanel({
       <div className="h-11 shrink-0 flex items-center gap-2 pl-3.5 pr-2.5">
         <div className="relative shrink-0" data-pop>
           <button
-            onClick={() => setOpenPop(openPop === 'file' ? null : 'file')}
-            title="项目菜单"
+            onClick={() => projectAgent ? onBackHome?.() : setOpenPop(openPop === 'file' ? null : 'file')}
+            title={projectAgent ? '返回项目任务' : '项目菜单'}
             className="block rounded-md hover:opacity-70 transition-opacity"
           >
             <img src={logoUrl} alt="画衣衣" className="w-5 h-5 object-contain" />
@@ -1235,19 +1277,20 @@ export default function ChatPanel({
               if (e.key === 'Enter') commitName()
               if (e.key === 'Escape') setRenaming(false)
             }}
-            style={{ width: `${Math.min(Math.max([...nameDraft].reduce((n, ch) => n + (/[^\x00-\xff]/.test(ch) ? 2 : 1), 0) + 2, 6), 44)}ch` }}
+            style={{ width: `${Math.min(Math.max([...nameDraft].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 2, 6), 44)}ch` }}
             className="max-w-full h-7 px-1.5 rounded-md border border-pri text-[13px] font-medium text-ink outline-none bg-panel"
           />
         ) : (
           <button
             onClick={() => {
+              if (projectAgent) { onBackHome?.(); return }
               setNameDraft(fileName)
               setRenaming(true)
             }}
-            title="点击更改名称"
+            title={projectAgent ? '返回项目任务' : '点击更改名称'}
             className="min-w-0 truncate text-left text-[13px] font-medium text-ink hover:text-pri transition-colors"
           >
-            {fileName}
+            {projectAgent?.projectName ?? fileName}
           </button>
         )}
         <button
@@ -1348,7 +1391,7 @@ export default function ChatPanel({
       ) : (
         <div className="h-12 shrink-0 border-b border-line-soft flex items-center justify-between px-3.5">
           <div className="flex-1 min-w-0 flex items-center gap-2">
-            <span className="min-w-0 truncate text-[13px] font-normal text-ink">{convoTitle}</span>
+            <span className="min-w-0 truncate text-[13px] font-normal text-ink">{projectAgent?.taskName ?? convoTitle}</span>
           </div>
           {headerActions}
         </div>
@@ -1364,18 +1407,23 @@ export default function ChatPanel({
             <div className="flex flex-1 flex-col items-center justify-center gap-5 py-8 text-center">
               <img src={logoUrl} alt="画衣衣" className="w-11 h-11 object-contain" />
               <div>
-                <div className="text-[17px] font-semibold text-ink">告诉我，你今天想设计什么款式？</div>
+                <div className="text-[17px] font-semibold text-ink">{projectAgent ? '今天，一起完成什么？' : '告诉我，你今天想设计什么款式？'}</div>
                 <div className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-mut">
-                  在下方输入需求，或点一个场景快速开始；也可上传款式 / 面料图，配合画布标记点做精准修改。
+                  {projectAgent ? '项目背景已带入。研究趋势、做企划、搜款搜料或设计改款，都可以从一句话开始。' : '在下方输入需求，或点一个场景快速开始；也可上传款式 / 面料图，配合画布标记点做精准修改。'}
                 </div>
               </div>
               <div className="flex max-w-[330px] flex-wrap items-center justify-center gap-2">
-                {[
+                {(projectAgent ? [
+                  { label: '研究趋势', prompt: '结合项目背景和已有资料，整理本季趋势方向，生成一份可编辑的趋势报告' },
+                  { label: '做企划 PPT', prompt: '围绕项目目标做一份服装企划 PPT，包含主题、色彩、面料和款式结构' },
+                  { label: '搜款搜料', prompt: '先找内部相似款和面辅料，再补充外部参考，保留来源' },
+                  { label: '设计改款', prompt: '基于项目中的参考图设计三个方向，保留款式细节并搭配面辅料' },
+                ] : [
                   { label: '灵感设计', prompt: '设计一套 2026 秋冬静奢通勤女装，包含 3 套搭配与面料建议' },
                   { label: '换面料', prompt: '把画布中的款式替换为真丝缎面，保持廓形与工艺细节不变' },
                   { label: '营销套图', prompt: '基于当前款式生成亚马逊营销套图：1 张主图 + 3 张卖点图' },
                   { label: 'AI 打版', prompt: '基于画布中的款式生成打版结构图与尺寸表' },
-                ].map((q) => (
+                ]).map((q) => (
                   <button
                     key={q.label}
                     onClick={() => {
@@ -1427,8 +1475,8 @@ export default function ChatPanel({
                 return (
                   <div key={i} className="self-start w-full rounded-xl border border-line-soft bg-fill-2 p-3">
                     <div className={`flex items-center gap-1.5 text-[12px] font-medium ${m.done ? 'text-ok' : 'text-ink'}`}>
-                      {m.done ? <Check className="w-3.5 h-3.5" /> : <Loader2 className="w-3.5 h-3.5 animate-spin text-acc" />}
-                      {m.done ? '任务已完成' : '画衣衣 · 任务执行中'}
+                      {m.done ? <Check className="w-3.5 h-3.5" /> : m.status === 'paused' || m.status === 'waiting' ? <HelpCircle className="w-3.5 h-3.5 text-mut" /> : <Loader2 className="w-3.5 h-3.5 animate-spin text-acc" />}
+                      {m.done ? '本轮执行完成' : m.status === 'paused' ? '已停止 · 可继续' : m.status === 'waiting' ? '等待你的补充' : '画衣衣 · 任务执行中'}
                     </div>
                     <ul className="mt-2 flex flex-col gap-1.5">
                       {m.steps.map((s, j) => (
@@ -1439,7 +1487,7 @@ export default function ChatPanel({
                             </span>
                           ) : (
                             <span className="w-4 h-4 rounded-full border-[1.5px] border-line-strong flex items-center justify-center shrink-0">
-                              {j === m.steps.findIndex((x) => !x.done) && <Loader2 className="w-2.5 h-2.5 animate-spin text-acc" />}
+                              {m.status !== 'paused' && m.status !== 'waiting' && j === m.steps.findIndex((x) => !x.done) && <Loader2 className="w-2.5 h-2.5 animate-spin text-acc" />}
                             </span>
                           )}
                           <span className={s.done ? 'text-mut' : 'text-ink'}>{s.label}</span>
@@ -1498,10 +1546,12 @@ export default function ChatPanel({
                     preset={m.preset}
                     answer={m.answer}
                     skipped={m.skipped}
-                    onSubmit={(choices, custom) => answerAsk(i, choices, custom, !!m.multi)}
-                    onSkip={() => skipAsk(i)}
+                    onSubmit={(choices, custom) => projectAgent ? projectAgent.onAnswer(i, choices, custom) : answerAsk(i, choices, custom, !!m.multi)}
+                    onSkip={() => projectAgent ? projectAgent.onSkip(i) : skipAsk(i)}
                   />
                 )
+              case 'artifact':
+                return <div key={i}>{projectAgent?.renderArtifact(m)}</div>
               case 'feedback':
                 return <FeedbackRow key={i} />
             }
@@ -1746,6 +1796,7 @@ export default function ChatPanel({
             </div>
           )}
 
+          {projectAgent?.composerContext}
           {/* 选中技能行：点击 chevron 打开模型档位（参考图 NB Pro 行） */}
           {skillId && (
             <div className="flex items-center gap-1.5 px-1 pt-0.5 pb-1">
@@ -1825,6 +1876,7 @@ export default function ChatPanel({
           <textarea
             ref={taRef}
             value={input}
+            aria-label="Agent 需求输入"
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -1843,7 +1895,7 @@ export default function ChatPanel({
               ref={fileRef}
               type="file"
               multiple
-              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md"
+              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.ppt,.pptx,.html"
               className="hidden"
               onChange={(e) => {
                 pickFiles(e.target.files)
@@ -1854,8 +1906,9 @@ export default function ChatPanel({
               <Plus className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setOpenPop(openPop === 'skill' ? null : 'skill')}
-              title="选择技能"
+              onClick={() => projectAgent ? projectAgent.onCapabilities() : setOpenPop(openPop === 'skill' ? null : 'skill')}
+              title={projectAgent ? '选择技能、专家或专家团' : '选择技能'}
+              aria-label={projectAgent ? '选择技能、专家或专家团' : '选择技能'}
               className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
                 openPop === 'skill'
                   ? 'bg-pri-soft text-pri'
@@ -1866,6 +1919,7 @@ export default function ChatPanel({
             >
               <Hammer className="w-4 h-4" />
             </button>
+            {projectAgent && <button onClick={projectAgent.onReferences} title="引用项目资料" className="w-8 h-8 rounded-lg flex items-center justify-center text-mut hover:bg-fill hover:text-ink"><Paperclip size={16} /></button>}
             {connBarClosed && (
               <button
                 onClick={() => setConnBarClosed(false)}
@@ -1879,6 +1933,7 @@ export default function ChatPanel({
               <button
                 onClick={() => setOpenPop(openPop === 'mode' ? null : 'mode')}
                 title="执行模式"
+                aria-label="执行模式"
                 className={`flex items-center gap-1 h-8 px-2 rounded-lg text-[12px] whitespace-nowrap transition-colors ${
                   openPop === 'mode' ? 'bg-fill text-ink' : 'text-ink-3 hover:bg-fill'
                 }`}
@@ -1939,14 +1994,15 @@ export default function ChatPanel({
               {enhancing ? <Loader2 className="w-4 h-4 animate-spin" /> : enhanced ? <RotateCcw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
             </button>
             <button
-              onClick={handleSend}
-              disabled={(!input.trim() && !attachments.length && !marks.length) || busy}
-              title="发送"
+              onClick={busy && projectAgent ? projectAgent.onStop : handleSend}
+              disabled={busy ? !projectAgent : (!input.trim() && !attachments.length && !marks.length)}
+              title={busy && projectAgent ? '停止生成' : '发送'}
+              aria-label={busy && projectAgent ? '停止生成' : '发送'}
               className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${
                 (input.trim() || attachments.length || marks.length) && !busy ? 'bg-pri text-white hover:bg-pri-deep' : 'bg-fill text-mut-3'
               }`}
             >
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {busy && projectAgent ? <span className="w-3 h-3 bg-current rounded-sm" /> : busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
         </div>
