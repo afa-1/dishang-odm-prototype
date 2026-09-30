@@ -133,6 +133,7 @@ type GenAction = 'regen' | 'selectAll' | 'delete' | 'duplicate' | 'download' | '
 type CanvasSnap = { cards: Card[]; strokes: PenStroke[] }
 export interface ProjectCanvasDocument { cards: Card[]; strokes: PenStroke[]; marks: Mark[] }
 export interface ProjectCanvasBridge {
+  embedded?: boolean
   initial: ProjectCanvasDocument
   onChange?: (draft: ProjectCanvasDocument) => void
   toolbar?: HTMLElement | null
@@ -1114,6 +1115,12 @@ export default function CanvasArea({
     if (initialized.current || !containerRef.current) return
     initialized.current = true
     const rect = containerRef.current.getBoundingClientRect()
+    if (projectBridge && cards.length) {
+      const x = Math.min(...cards.map(c => c.x)), y = Math.min(...cards.map(c => c.y))
+      const w = Math.max(...cards.map(c => c.x + c.w)) - x, h = Math.max(...cards.map(c => c.y + (c.imgH ?? 240) + 50)) - y
+      const k = Math.min(1.25, Math.max(.15, Math.min((rect.width - 80) / w, (rect.height - 120) / h)))
+      setView({ x: (rect.width - w * k) / 2 - x * k, y: (rect.height - h * k) / 2 - y * k, k }); return
+    }
     const k = Math.min(1, Math.max(0.4, (rect.height - 200) / 1560))
     setView({
       x: rect.width * 0.36 - 60 * k,
@@ -4141,7 +4148,7 @@ export default function CanvasArea({
       }}
     >
       {/* 图片导入：隐藏文件选择器 */}
-      {projectBridge?.toolbar && createPortal(<div className="flex flex-wrap gap-2" onPointerDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><ProjectButton disabled={projectBusy} onClick={() => void saveProjectCanvas(false)}>保存画布草稿</ProjectButton><ProjectButton disabled={projectBusy || !selected.length} onClick={() => void archiveProjectSelection()}>归档选中图（{selected.length}）</ProjectButton><ProjectButton primary disabled={projectBusy} onClick={() => void saveProjectCanvas(true)}>保存并返回任务</ProjectButton><ProjectButton disabled={projectBusy} onClick={() => projectBridge.onDiscard()}>不保存退出</ProjectButton></div>, projectBridge.toolbar)}
+      {projectBridge?.toolbar && createPortal(<div className="flex flex-wrap gap-2" onPointerDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}><ProjectButton disabled={projectBusy} onClick={() => void saveProjectCanvas(false)}>保存画布草稿</ProjectButton><ProjectButton disabled={projectBusy || !selected.length} onClick={() => void archiveProjectSelection()}>归档选中图（{selected.length}）</ProjectButton><ProjectButton primary disabled={projectBusy} onClick={() => void saveProjectCanvas(true)}>{projectBridge.embedded ? '保存并收起' : '保存并返回任务'}</ProjectButton>{!projectBridge.embedded && <ProjectButton disabled={projectBusy} onClick={() => projectBridge.onDiscard()}>不保存退出</ProjectButton>}</div>, projectBridge.toolbar)}
       {projectBusy && <div className="absolute inset-0 z-50 bg-panel/50 flex items-center justify-center text-ink text-[13px]">正在保存文件，请稍候…</div>}
       <input
         ref={importInputRef}

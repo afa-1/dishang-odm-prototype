@@ -45,6 +45,7 @@ export interface Project {
   caseId?: 'zara-28ss'
   developmentMode?: '自主开发' | '客户开发'
   members?: { name: string; role: string }[]
+  invitation?: { token: string; mode: 'request' | 'direct'; requests: { name: string; date: string }[] }
   review?: { state: 'draft' | 'pending' | 'returned' | 'approved'; reviewer: string; note: string; date: string }
   id: string; name: string; goal: string; customers: string[]; brands: string[]; season: string; category: string; owner: string
   customerIds?: string[]; brandIds?: string[]

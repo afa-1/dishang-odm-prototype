@@ -55,10 +55,13 @@ export type ChatItem =
   | { kind: 'suggest'; items: string[] }
   | { kind: 'feedback' }
   | { kind: 'artifact'; id: string; title: string; detail: string }
+  | { kind: 'execution'; title: string; detail: string; state: 'running' | 'done' }
   | { kind: 'ask'; context: string; question: string; options: string[]; multi?: boolean; preset?: number[]; answer?: string; skipped?: boolean } // 询问模式：推理中途的情景化提问卡片（multi 时选项可多选，preset 为推荐勾选项）
 
 type Item = ChatItem
 export interface ProjectAgentBridge {
+  layout: 'full' | 'split'
+  prepared?: boolean
   projectName: string
   taskName: string
   items: ChatItem[]
@@ -632,14 +635,15 @@ export default function ChatPanel({
   const [histOpen, setHistOpen] = useState(false)
   const [localBusy, setBusy] = useState(false)
   const busy = projectAgent?.busy ?? localBusy
+  const [mode, setMode] = useState<'auto' | 'ask'>(() => (localStorage.getItem('hyy-exec-mode') === 'ask' ? 'ask' : 'auto'))
   useEffect(() => {
     if (projectAgent?.draft !== undefined) {
       setInput(projectAgent.draft)
+      if (projectAgent.prepared) setMode('auto')
       projectAgent.onDraftConsumed()
     }
   }, [projectAgent?.draft]) // eslint-disable-line react-hooks/exhaustive-deps
   // 底部对话栏（PRD）：执行模式与模型档位持久化用户偏好
-  const [mode, setMode] = useState<'auto' | 'ask'>(() => (localStorage.getItem('hyy-exec-mode') === 'ask' ? 'ask' : 'auto'))
   const [model, setModel] = useState(() => localStorage.getItem('hyy-model') || 'standard')
   const [mmMode, setMmMode] = useState<'自动' | '自定义'>('自动') // 多模态（展示用）
   const [skillId, setSkillId] = useState<string | null>(null)
@@ -1199,7 +1203,7 @@ export default function ChatPanel({
           <button
             onClick={toggleExpand}
             title={expanded ? '还原面板宽度' : '展开面板'}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-mut hover:bg-fill hover:text-ink transition-colors"
+            className={projectAgent ? 'hidden' : 'w-7 h-7 rounded-md flex items-center justify-center text-mut hover:bg-fill hover:text-ink transition-colors'}
           >
             {expanded ? <Shrink className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
           </button>
@@ -1245,17 +1249,19 @@ export default function ChatPanel({
       className={`absolute left-2 top-2 bottom-2 z-30 bg-panel rounded-xl border border-line shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex flex-col ${
         animW ? 'transition-[width] duration-300 ease-in-out' : ''
       }`}
-      style={{ width }}
+      style={{ width: projectAgent?.layout === 'full' ? 'calc(100% - 16px)' : width }}
+      data-testid={projectAgent ? 'project-chat' : undefined}
     >
       {/* 调宽热区：面板右侧外边缘（隐形无灰色条），悬浮呈现 ↔ 拖拽光标，按住拖拽调宽 */}
       <div
         onPointerDown={startResize}
+        hidden={projectAgent?.layout === 'full'}
         title="拖拽调整面板宽度"
         className="absolute right-0 top-0 bottom-0 w-[12px] -mr-[12px] cursor-col-resize z-40"
       />
 
       {/* 文件信息行：融合原顶部导航栏左侧功能（点击 LOGO 返回首页，点击文件名更改名称） */}
-      <div className="h-11 shrink-0 flex items-center gap-2 pl-3.5 pr-2.5">
+      <div className={projectAgent ? 'hidden' : 'h-11 shrink-0 flex items-center gap-2 pl-3.5 pr-2.5'}>
         <div className="relative shrink-0" data-pop>
           <button
             onClick={() => projectAgent ? onBackHome?.() : setOpenPop(openPop === 'file' ? null : 'file')}
@@ -1401,18 +1407,18 @@ export default function ChatPanel({
       <div className="relative flex-1 min-h-0 flex flex-col">
         <div ref={listRef} onScroll={syncSb} className="flex-1 min-h-0 overflow-y-auto px-4 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {/* 对话流 */}
-        <div className="flex min-h-full flex-col gap-3">
+        <div className={`flex min-h-full flex-col ${projectAgent ? 'gap-4 w-full max-w-[900px] mx-auto' : 'gap-3'}`}>
           {/* 空对话引导：按画衣衣业务场景给出入口与操作提示（点击仅填充输入框，用户可修改后再发送） */}
           {items.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center gap-5 py-8 text-center">
               <img src={logoUrl} alt="画衣衣" className="w-11 h-11 object-contain" />
               <div>
-                <div className="text-[17px] font-semibold text-ink">{projectAgent ? '今天，一起完成什么？' : '告诉我，你今天想设计什么款式？'}</div>
+                <div className={`${projectAgent ? 'text-[22px]' : 'text-[17px]'} font-semibold text-ink`}>{projectAgent?.prepared ? '准备好了，开始这次任务吧' : projectAgent ? '今天，一起完成什么？' : '告诉我，你今天想设计什么款式？'}</div>
                 <div className="mt-2 max-w-[300px] text-[12px] leading-relaxed text-mut">
-                  {projectAgent ? '项目背景已带入。研究趋势、做企划、搜款搜料或设计改款，都可以从一句话开始。' : '在下方输入需求，或点一个场景快速开始；也可上传款式 / 面料图，配合画布标记点做精准修改。'}
+                  {projectAgent?.prepared ? '提示词、引用资料和协作能力已放入输入框。可先调整，再点击发送。' : projectAgent ? '项目背景已带入。研究趋势、做企划、搜款搜料或设计改款，都可以从一句话开始。' : '在下方输入需求，或点一个场景快速开始；也可上传款式 / 面料图，配合画布标记点做精准修改。'}
                 </div>
               </div>
-              <div className="flex max-w-[330px] flex-wrap items-center justify-center gap-2">
+              <div className={projectAgent?.prepared ? 'hidden' : `flex ${projectAgent ? 'max-w-[500px]' : 'max-w-[330px]'} flex-wrap items-center justify-center gap-2`}>
                 {(projectAgent ? [
                   { label: '研究趋势', prompt: '结合项目背景和已有资料，整理本季趋势方向，生成一份可编辑的趋势报告' },
                   { label: '做企划 PPT', prompt: '围绕项目目标做一份服装企划 PPT，包含主题、色彩、面料和款式结构' },
@@ -1449,9 +1455,9 @@ export default function ChatPanel({
               case 'ai':
                 return (
                   <div key={i} className="self-start w-full max-w-[94%]">
-                    <p className="text-[12px] text-mut mb-1">深度思考</p>
+                    {!projectAgent && <p className="text-[12px] text-mut mb-1">深度思考</p>}
                     <AiRichText text={m.text} />
-                    <p className="mt-1 text-right text-[11px] text-mut">已回复</p>
+                    {!projectAgent && <p className="mt-1 text-right text-[11px] text-mut">已回复</p>}
                   </div>
                 )
               case 'plan':
@@ -1472,6 +1478,7 @@ export default function ChatPanel({
                   </div>
                 )
               case 'progress':
+                if (projectAgent) return null // Inline execution cards already show each step in project conversations.
                 return (
                   <div key={i} className="self-start w-full rounded-xl border border-line-soft bg-fill-2 p-3">
                     <div className={`flex items-center gap-1.5 text-[12px] font-medium ${m.done ? 'text-ok' : 'text-ink'}`}>
@@ -1552,6 +1559,8 @@ export default function ChatPanel({
                 )
               case 'artifact':
                 return <div key={i}>{projectAgent?.renderArtifact(m)}</div>
+              case 'execution':
+                return <details key={i} open={m.state === 'running'} className="rounded-2xl bg-fill-2 px-4 py-3" data-testid="agent-execution"><summary className="cursor-pointer flex items-center gap-2 text-[12px]">{m.state === 'running' ? (busy ? <Loader2 size={14} className="animate-spin text-pri" /> : <HelpCircle size={14} className="text-mut" />) : <Check size={14} className="text-ok" />}<span className="flex-1">{m.title}</span><span className="text-[10px] text-mut">{m.state === 'running' ? busy ? '执行中' : '等待继续' : '已完成'}</span></summary><p className="text-[12px] text-ink-3 leading-6 mt-3 whitespace-pre-wrap">{m.detail}</p></details>
               case 'feedback':
                 return <FeedbackRow key={i} />
             }
@@ -1596,7 +1605,7 @@ export default function ChatPanel({
       </div>
 
       {/* 输入区（底部对话栏 PRD：技能 / 模式 / 档位 / 预设 / 增强 / 附件 / 发送）；顶部无分割线，与对话列表自然衔接 */}
-      <div className="shrink-0 p-3 relative">
+      <div className={`shrink-0 p-3 relative ${projectAgent ? 'w-full max-w-[924px] mx-auto' : ''}`}>
         {/* 全局轻提示（上传校验等） */}
         {toast && (
           <div className="absolute bottom-full left-3 mb-2 z-40 bg-ink text-panel text-[11.5px] px-3 py-1.5 rounded-full shadow-lg max-w-full truncate">
@@ -2007,7 +2016,7 @@ export default function ChatPanel({
           </div>
         </div>
         {/* 应用链接条：与首页一致的叠加式连接器入口（可关闭，关闭后由工具栏「连接器」图标恢复） */}
-        {!connBarClosed && <ConnectorLinkBar onOpen={() => setConnOpen(true)} onClose={() => setConnBarClosed(true)} />}
+        {!projectAgent && !connBarClosed && <ConnectorLinkBar onOpen={() => setConnOpen(true)} onClose={() => setConnBarClosed(true)} />}
       </div>
 
       {connOpen && <ConnectorsModal onClose={() => setConnOpen(false)} />}

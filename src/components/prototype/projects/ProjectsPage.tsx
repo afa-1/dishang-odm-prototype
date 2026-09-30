@@ -13,6 +13,7 @@ import { ProjectStorageErrorContext } from './feedback'
 import { TemplateCards } from './TemplatePicker'
 import type { ProjectTemplate } from './capabilities'
 import { ProjectOverview } from './ProjectOverview'
+import { ProjectInvite, JoinProject } from './ProjectInvite'
 import { createCaseProject } from './zaraDemo'
 
 export default function ProjectsPage() {
@@ -58,19 +59,20 @@ export default function ProjectsPage() {
     setAssetId(null)
   }
   function newTask(a?: Asset) { if (!project) return; const t = newAgentTask(project, a); if (update(p => ({ ...p, tasks: [t, ...p.tasks] }), '新建项目对话')) { setAssetId(null); navigate(project.id, '任务', t.id) } }
+  function replayTask(source: Task) { if (!project) return; const t: Task = { ...newAgentTask(project), name: source.name.replace(/ · 新演示$/, '') + ' · 新演示', caseStage: source.caseStage, caseRun: source.caseRun ? { ...source.caseRun, state: 'idle', step: 0 } : undefined, agent: undefined }; if (update(p => ({ ...p, tasks: [t, ...p.tasks] }), '新建演示对话，保留原任务')) navigate(project.id, '任务', t.id) }
   function upload(taskId?: string) { setUploadTask(taskId); setForm('upload') }
   function changeAsset(id: string, patch: Partial<Asset>, activity: string) { return update(p => ({ ...p, assets: p.assets.map(a => a.id === id ? { ...a, ...patch } : a) }), activity) }
   function saveTask(t: Task) { const brief = t.documents?.filter(d => d.kind === 'Brief 拆解').at(-1); return update(p => ({ ...p, status: p.status === '待启动' && t.status === '进行中' ? '进行中' : p.status, ...(t.status === '已完成' && brief ? { requirements: { ...structuredClone(brief), confirmedAt: new Date().toISOString() } } : {}), tasks: p.tasks.map(x => x.id === t.id ? t : x) }), `更新任务：${t.name}`) }
-  function saveTaskAssets(taskId: string, assets: Asset[], mode: 'collect' | 'design' | 'document') {
+  function saveTaskAssets(taskId: string, assets: Asset[], mode: 'collect' | 'design' | 'document' | 'delivery') {
     return update(p => {
       const next = [...p.assets]
       for (const a of assets) {
         const index = next.findIndex(x => x.id === a.id || a.provenance && x.provenance?.key === a.provenance.key)
         if (index >= 0) {
-          if (mode !== 'collect') next[index] = { ...next[index], revisions: [...next[index].revisions, ...a.revisions] }
+          if (mode !== 'collect') next[index] = { ...next[index], delivery: mode === 'delivery' || next[index].delivery, revisions: [...next[index].revisions, ...a.revisions.filter(r => !next[index].revisions.some(old => old.id === r.id))] }
           continue
         }
-        next.unshift({ ...structuredClone(a), taskId, delivery: false, selection: '待选' })
+        next.unshift({ ...structuredClone(a), taskId, delivery: mode === 'delivery', selection: '待选' })
       }
       return { ...p, assets: next }
     }, mode === 'document' ? '从任务工作稿导出文件；修订版本待人工采用' : mode === 'design' ? '从设计画布归档图片；修订版本待人工采用' : '从检索结果择优归档参考')
@@ -86,7 +88,8 @@ export default function ProjectsPage() {
   const rows = projects.filter(p => `${p.name} ${p.customers.join(' ')} ${p.brands.join(' ')}`.toLowerCase().includes(query.toLowerCase()) && (scope === '全部项目' || scope === '客户开发' && (p.developmentMode === '客户开发' || !p.developmentMode && p.customers.length > 0) || scope === '自主开发' && (p.developmentMode === '自主开发' || !p.developmentMode && !p.customers.length) || scope === '已归档' && p.status === '已归档'))
 
   return <ProjectStorageErrorContext.Provider value={storageError}><div className="min-h-full bg-cvs text-ink text-[13px]" data-testid="projects-module">
-    <header className="h-[76px] bg-panel border-b border-line-soft px-6 lg:px-8 flex items-center justify-between gap-4"><div className="flex items-center gap-2 min-w-0 text-ink-3"><FolderKanban size={17} className="shrink-0" /><button onClick={() => navigate(null)} className="hover:text-pri shrink-0">项目</button>{project && <><ChevronRight size={14} className="text-mut shrink-0" /><span className="text-ink truncate" title={project.name}>{project.name}</span></>}</div><div className="flex items-center gap-3 shrink-0"><Badge>本机原型</Badge>{project && <button title={configOpen ? '收起项目配置' : '展开项目配置'} aria-label={configOpen ? '收起项目配置' : '展开项目配置'} onClick={() => setConfigOpen(!configOpen)} className="w-9 h-9 flex items-center justify-center rounded-full border border-line text-ink-3 hover:bg-fill">{configOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}</button>}</div></header>
+    <header className="h-[76px] bg-panel border-b border-line-soft px-6 lg:px-8 flex items-center justify-between gap-4"><div className="flex items-center gap-2 min-w-0 text-ink-3"><FolderKanban size={17} className="shrink-0" /><button onClick={() => navigate(null)} className="hover:text-pri shrink-0">项目</button>{project && <><ChevronRight size={14} className="text-mut shrink-0" /><span className="text-ink truncate" title={project.name}>{project.name}</span></>}</div><div className="flex items-center gap-3 shrink-0"><span className="text-[11px] text-mut">演示原型</span>{project && <ProjectInvite project={project} onUpdate={update} />}{project && <button title={configOpen ? '收起项目配置' : '展开项目配置'} aria-label={configOpen ? '收起项目配置' : '展开项目配置'} onClick={() => setConfigOpen(!configOpen)} className="w-9 h-9 flex items-center justify-center rounded-full border border-line text-ink-3 hover:bg-fill">{configOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}</button>}</div></header>
+    {project && params.get('invite') === project.invitation?.token && <JoinProject project={project} onUpdate={update} onClose={() => navigate(project.id)} />}
     {storageError && <div role="alert" className="m-4 px-4 py-3 bg-err-soft text-err rounded-xl text-[12px]">{storageError}</div>}
     {projectId && !project ? <Empty title="项目不存在或已不在此浏览器中" text="请返回项目列表，选择本机保存的项目。"><Button onClick={() => navigate(null)}>返回项目列表</Button></Empty> : !project ? <div className="max-w-[1360px] mx-auto px-6 lg:px-10 py-9">
       <div className="flex items-start justify-between gap-4 mb-8"><div><h1 className="text-[26px] font-semibold">项目</h1><p className="text-ink-3 text-[13px] mt-2">让每次讨论、每份资料和每个款式，都围绕同一个开发目标。</p></div><Button primary onClick={() => setForm('create')}><Plus size={16} />新建项目</Button></div>
@@ -103,7 +106,7 @@ export default function ProjectsPage() {
       <div className="px-6 lg:px-8 pt-6 bg-panel border-b border-line-soft"><div className="flex justify-between items-start gap-4 mb-5"><div className="min-w-0"><div className="flex flex-wrap gap-3 items-center"><h1 className="text-[22px] font-semibold break-words">{project.name}</h1>{project.demo && <Badge>示例项目</Badge>}<Badge tone={project.status === '进行中' ? 'blue' : 'muted'}>{project.status}</Badge></div><p className="text-ink-3 text-[12px] mt-2">{project.season || '季节待定'} · {project.category || '品类待定'} · 负责人：{project.owner}</p></div><div className="flex gap-2 shrink-0">{project.caseId && <Button onClick={() => openCase(false, true)}>新开一轮演示</Button>}<Button onClick={() => setForm('edit')}><Pencil size={14} />编辑信息</Button></div></div><div role="tablist" aria-label="项目内容" className="inline-flex bg-fill rounded-full p-1 mb-5">{TABS.map(t => <button id={`project-tab-${t}`} role="tab" aria-selected={tab === t} aria-controls="project-tab-panel" key={t} onClick={() => navigate(project.id, t)} className={`px-5 py-2 rounded-full text-[13px] ${tab === t ? 'bg-panel text-ink font-semibold' : 'text-ink-3 hover:text-ink'}`}>{t}</button>)}</div></div>
       <div className="flex items-start relative"><div role="tabpanel" id="project-tab-panel" aria-labelledby={`project-tab-${tab}`} className="flex-1 min-w-0 p-6 lg:p-8">
         {tab === '概览' && <ProjectOverview project={project} onTab={t => navigate(project.id, t)} onTask={id => navigate(project.id, '任务', id)} onNewTask={() => newTask()} onEdit={() => setForm('edit')} onUpdate={update} />}
-        {tab === '任务' && <TasksView onNavigate={(tab, task) => navigate(project.id, tab, task)} key={activeId ?? 'list'} project={project} activeId={activeId} onActive={id => navigate(project.id, '任务', id)} onCreate={() => newTask()} onUpdate={saveTask} onAssets={saveTaskAssets} onOpenAsset={setAssetId} onUpload={upload} />}
+        {tab === '任务' && <TasksView onNavigate={(tab, task) => navigate(project.id, tab, task)} key={activeId ?? 'list'} project={project} activeId={activeId} onActive={id => navigate(project.id, '任务', id)} onCreate={() => newTask()} onUpdate={saveTask} onReplay={replayTask} onAssets={saveTaskAssets} onOpenAsset={setAssetId} onUpload={upload} />}
         {tab === '资产' && <AssetsView onUpdate={update} onImport={assets => update(p => ({ ...p, assets: [...assets.filter(a => !p.assets.some(x => x.resourceId === a.resourceId)), ...p.assets] }), '从公共资料引用到项目')} project={project} onOpen={setAssetId} onUpload={() => upload()} onReference={newTask} onChange={changeAsset} />}
         {tab === '交付' && <DeliveryView onUpdate={update} project={project} onOpen={setAssetId} onAssets={() => navigate(project.id, '资产')} onChange={changeAsset} onHandoff={h => { if (update(p => ({ ...p, status: '已交接', handoffs: [h, ...p.handoffs] }), `完成内部确认：${h.items.length} 项内容，模拟交接`)) notify('内部确认快照已保存，未发送到真实 PLM') }} onPush={r => { if (update(p => ({ ...p, pushes: [r, ...p.pushes] }), `新建客户推款记录：${r.customer}`)) notify('推款记录已保存，未实际发送') }} onFeedback={(id, feedback) => { if (update(p => ({ ...p, pushes: p.pushes.map(r => r.id === id ? { ...r, feedback } : r) }), '更新客户反馈（不改变内部确认状态）')) notify('客户反馈已保存') }} />}
       </div>{configOpen && <aside className="w-[264px] shrink-0 border-l border-line-soft bg-panel p-5 min-h-[640px] max-lg:absolute max-lg:right-0 max-lg:top-0 max-lg:z-20 max-lg:border max-lg:rounded-2xl">
@@ -119,6 +122,6 @@ export default function ProjectsPage() {
 
     {form === 'upload' && project && <UploadForm onClose={() => setForm(null)} onSave={assets => { if (update(p => ({ ...p, assets: [...assets.map(a => ({ ...a, ...(uploadTask ? { taskId: uploadTask } : {}) })), ...p.assets] }), `上传 ${assets.length} 项资产`)) { setForm(null); notify('资产已保存到本机浏览器') } }} />}
     {asset && <AssetDetail key={asset.id} project={project} asset={asset} onClose={() => setAssetId(null)} onChange={changeAsset} onReference={newTask} toast={notify} />}
-    {toast && <div role="status" className="fixed z-[70] bottom-6 left-1/2 -translate-x-1/2 max-w-[80vw] bg-ink text-panel text-[12px] px-5 py-3 rounded-full">{toast}</div>}
+    {toast && !activeId && <div role="status" className="fixed z-[70] bottom-6 left-1/2 -translate-x-1/2 max-w-[80vw] bg-ink text-panel text-[12px] px-5 py-3 rounded-full">{toast}</div>}
   </div></ProjectStorageErrorContext.Provider>
 }

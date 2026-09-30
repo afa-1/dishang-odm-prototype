@@ -1,18 +1,39 @@
 import type { ChatItem } from '../ChatPanel'
 import { adopted, makeAsset, now, uid, type Asset, type Project, type Task, type WorkDocument } from './model'
 import { capabilityById } from './capabilities'
-import { caseDocument, caseMaterials, caseSources, caseStyle } from './zaraDemo'
+import { CASE_STAGES, caseDocument, caseMaterials, caseSources, caseStyle } from './zaraDemo'
 
 export type AgentIntent = 'collect' | 'brief' | 'trend' | 'planning' | 'search' | 'design' | 'selection' | 'delivery' | 'discuss'
 export interface AgentOutput {
   id: string; title: string; date: string; type: 'document' | 'images' | 'search' | 'notes'
-  assets: Asset[]; document?: WorkDocument; body?: string; archivedIds?: string[]
+  assets: Asset[]; document?: WorkDocument; body?: string; archivedIds?: string[]; archivedDocument?: Asset
 }
 export interface AgentRun {
   intent: AgentIntent; request: string; status: 'running' | 'asking' | 'paused' | 'done'
   step: number; progressIndex: number; capabilities: string[]; refs: Task['refs']; supplement?: string
+  tick?: number; executionIndex?: number
 }
-export interface AgentSession { items: ChatItem[]; outputs: AgentOutput[]; run?: AgentRun; capabilityIds: string[] }
+export interface AgentSession { items: ChatItem[]; outputs: AgentOutput[]; run?: AgentRun; capabilityIds: string[]; draft?: string }
+
+export function prepareDemo(project: Project, task: Task) {
+  const stage = CASE_STAGES.find(s => s.id === task.caseStage)
+  if (!stage) return null
+  let assets = caseSources(project)
+  if (['brief', 'planning'].includes(stage.id)) {
+    const brief = makeAsset('ZARA · 本次开发目标', '参考资料', { id: `${project.id}-brief-input-v1`, name: '开发目标与品牌背景.md', mime: 'text/markdown', date: now(), text: project.goal + '\n\n客户：' + project.customers.join('、') + '\n品牌：' + project.brands.join('、') }, '资料收集')
+    brief.id = `${project.id}-brief-input`; assets = [brief, ...assets.slice(-1)]
+  }
+  if (['search', 'design', 'selection'].includes(stage.id)) assets = [caseStyle(project, 0, true), ...caseMaterials(project)]
+  if (stage.id === 'delivery') assets = project.assets.filter(a => a.delivery).length ? project.assets.filter(a => a.delivery) : assets.slice(-1)
+  assets = assets.map(a => project.assets.find(v => v.id === a.id) ?? a)
+  return { assets, refs: assets.map(a => ({ assetId: a.id, revisionId: a.adopted, name: a.name })), session: { items: [], outputs: [], capabilityIds: stage.capabilityIds, draft: stage.instruction } as AgentSession }
+}
+
+export function executionSteps(project: Project, run: AgentRun) {
+  const sample = project.caseId && CASE_STAGES.find(s => s.id === run.intent)
+  if (sample) return sample.steps
+  return INTENTS[run.intent].steps.map((title, i) => ({ title, detail: i === 0 ? `读取项目目标与 ${run.refs.length} 份引用：${run.refs.map(r => r.name).join('、') || '项目背景'}。` : i === 1 ? `调用${run.capabilities.map(id => capabilityById(id)?.name ?? id).join('、') || '服装助手'}，围绕“${run.request.slice(0, 90)}”组织本轮内容。` : '整理可编辑草稿和成果附件，保留资料来源与待确认事项。完成后可以在对话中预览、下载或保存。' }))
+}
 
 export const INTENTS: Record<AgentIntent, { title: string; capability: string; steps: string[]; question: string; options: string[]; followups: string[] }> = {
   collect: { title: '趋势资料整理', capability: 'odm-trend-collect', steps: ['读取引用资料与项目背景', '整理来源、主题与版本', '形成资料清单与使用建议'], question: '这轮资料优先怎么整理？', options: ['按趋势主题', '按品牌与季节', '按来源与版本'], followups: ['基于这些资料生成趋势报告', '把重点方向整理成企划 PPT'] },
@@ -100,7 +121,7 @@ export function produceOutput(project: Project, task: Task, run: AgentRun): Agen
       a.material = `候选：轻量哑光梭织 / 自然肌理；实物及采购条件待确认。\n${context}`
       return a
     })
-    return { ...base, type: 'images', title: '款式设计与款料建议', assets: images, body: `三个示例方向已放入工作区，可加入画布继续调整。\n${context}` }
+    return { ...base, type: 'images', title: '款式设计与款料建议', assets: images, body: `三个示例方向已生成，点击图片可打开设计画布继续调整。\n${context}` }
   }
   const sources = run.intent === 'collect' && project.caseId ? caseSources(project) : []
   const text = run.intent === 'collect'

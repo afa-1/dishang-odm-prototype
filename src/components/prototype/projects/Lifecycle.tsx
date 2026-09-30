@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, History, Users } from 'lucide-react'
+import { Check, History } from 'lucide-react'
 import { dateLabel, now, type Project, type Task } from './model'
 import { Badge, Button, card, Field, input, Modal, textarea } from './ui'
 import { statusTone, taskTransition } from './lifecycleModel'
@@ -19,10 +19,4 @@ export function TaskLifecycle({ project, task, onSave, canSubmit = true }: { pro
     {!!task.history?.length && <details><summary className="cursor-pointer text-[11px] text-ink-3"><History size={12} className="inline mr-1" />流转记录 · {task.history.length}</summary><div className="mt-2 max-h-36 overflow-auto space-y-2">{[...task.history].reverse().map((h, i) => <p key={i} className="text-[11px] text-ink-3 leading-5">{dateLabel(h.date)} · {h.text}</p>)}</div></details>}
     {returnOpen && <Modal title="退回任务" description="说明需要修改的内容，负责人可在原任务里继续完善。" onClose={() => setReturnOpen(false)}><Field label="退回原因 *"><textarea className={textarea} rows={3} value={note} onChange={e => setNote(e.target.value)} placeholder="例如：核实材料成分来源，并补充成本待确认说明。" /></Field><div className="flex justify-end mt-4"><Button primary disabled={!note.trim()} onClick={() => { if (onSave(taskTransition(task, '退回修改', note.trim()))) { setReturnOpen(false); setNote('') } }}>确认退回</Button></div></Modal>}
   </section>
-}
-
-export function MembersEditor({ project, onSave }: { project: Project; onSave: (members: NonNullable<Project['members']>) => boolean }) {
-  const [open, setOpen] = useState(false), [name, setName] = useState(''), [role, setRole] = useState('项目成员')
-  const members = project.members ?? [{ name: project.owner, role: '项目负责人' }]
-  return <><Button onClick={() => setOpen(true)}><Users size={14} />成员与分工 · {members.length}</Button>{open && <Modal title="项目成员与分工" description="维护演示成员后，可在任务中分配负责人和审核人。这里不向真实人员发送邀请，也不校验审批权限。" onClose={() => setOpen(false)}><div className="space-y-3">{members.map(m => <div key={m.name} className="flex justify-between p-3 rounded-xl bg-fill-2"><span>{m.name}</span><span className="text-ink-3 text-[12px]">{m.role}</span></div>)}<Field label="新增成员名称"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field><Field label="职责"><input className={input} value={role} onChange={e => setRole(e.target.value)} /></Field><Button primary disabled={!name.trim() || members.some(m => m.name === name.trim())} onClick={() => { if (onSave([...members, { name: name.trim(), role: role.trim() || '项目成员' }])) { setName(''); setRole('项目成员') } }}>添加成员</Button></div></Modal>}</>
 }
